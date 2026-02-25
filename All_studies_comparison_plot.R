@@ -1,76 +1,4 @@
-df <- data.frame(
-  Study = factor(1:10),
-  Age = c(35, 42, 38, 50, 47, 41, 39, 53, 45, 40),
-  BMI = c(24, 27, 25, 29, 28, 26, 25, 30, 27, 26),
-  Fat_Ratio = c(18, 21, 19, 23, 22, 20, 19, 24, 21, 20)
-)
-
-df.f <- data.frame(
-  Study = c("GUSTO", "GUSTO", "PMNS", "UKBB.SAS1","UKBB.SAS2","MolSHARE","CURES","MASALA"),
-  Age = c(0, 4.5, 18, 23, 24, 37, 45, 55),
-  BMI = c(12.0,15.4,18.7,22.4,24.5,26.3,25.7,26.4),
-  SAT.VAT_Ratio = c(4.8,3.9,1.9,4.9,5.4,2.8,2.2,2.3)
-)
-
-
-df.m <- data.frame(
-  Study = c("GUSTO", "GUSTO", "PMNS", "UKBB.SAS1","UKBB.SAS2","MolSHARE","CRISIS","CURES","MASALA"),
-  Age = c(0, 4.5, 18, 23, 24, 37, 42, 45, 55),
-  BMI = c(12.7,15.2,19.0,23.9,24.8,27.7,22.0,24.2,26.0),
-  SAT.VAT_Ratio = c(4.2,3.2,1.2,2.8,2.9,1.5,1.04,1.2,1.4)
-)
-
-library(tidyr)
-library(ggplot2)
-library(dplyr)
-
-# Pivot BMI and Fat_Ratio into long format
-df.f_long <- df.f %>%
-  pivot_longer(cols = c(BMI, SAT.VAT_Ratio), names_to = "Variable", values_to = "Value")
-
-# Plot
-ggplot(df.f_long, aes(x = Age, y = Value, color = Variable, shape = Variable)) +
-  geom_point(size = 3) +
-  geom_line(aes(group = Variable), linewidth = 1, linetype = "dashed") +
-  labs(
-    title = "BMI and SAT/VAT Ratio by Age Across Studies in Females",
-    x = "Age",
-    y = "Value",
-    color = "Metric",
-    shape = "Metric"
-  ) +
-  geom_text(aes(label = Study), vjust = -1) +
-  theme_minimal(base_size = 14)
-
-
-#Males
-# Pivot BMI and Fat_Ratio into long format
-df.m_long <- df.m %>%
-  pivot_longer(cols = c(BMI, SAT.VAT_Ratio), names_to = "Variable", values_to = "Value")
-
-# Plot
-ggplot(df.m_long, aes(x = Age, y = Value, color = Variable, shape = Variable)) +
-  geom_point(size = 3) +
-  geom_line(aes(group = Variable), linewidth = 1, linetype = "dashed") +
-  labs(
-    title = "BMI and SAT/VAT Ratio by Age Across Studies in Males",
-    x = "Age",
-    y = "Value",
-    color = "Metric",
-    shape = "Metric"
-  ) +
-  geom_text(aes(label = Study), vjust = -1) +
-  theme_minimal(base_size = 14)
-
-
-
-ggplot(df_long, aes(x = Age, y = Value, color = Variable)) +
-  geom_point(size = 3) +
-  geom_text(aes(label = Study), vjust = -1) +  # Add study labels
-  theme_minimal()
-
-
-###### Standardised mean #####
+###### Standardized mean Z-scores#####
 
 ####### FEMALES #######
 
@@ -376,8 +304,8 @@ BMI_sexsep<-ggarrange(pmal1,pfem1,
 ggsave(BMI_sexsep, filename = "MRI_paper_figure3B.tiff", width = 16, height = 12, dpi = 400)
 
 
-##### Forest plot style visuals ########
-
+###################### Forest plot style visuals ####################
+### These versions were finally used in the paper ####
 
 library(tidyverse)
 
