@@ -1,9 +1,5 @@
 
-
-#-----------------------------------------------------------------------------------------
-# New graphs 
-#-----------------------------------------------------------------------------------------
-
+rm(list = ls()) #Clear the environment
 
 #------------------------------------------------------
 # Metabolic syndrome - IDF
@@ -11,12 +7,22 @@
 
 library(haven)
 library(foreign)
+library(tidyverse)
 
 mridf<-read_sav("PMNS_18y_MRI_test.sav") ## Reading the main dataframe
 dim(mridf)
 colnames(mridf)
 str(mridf$sex)
 mridf$sex<-factor(mridf$sex)
+
+
+
+cor.test(mridf$ZRE_SAT_combined, mridf$ZRE_VAT_Combined) # Test the correlation between ASAT and VAT
+cor.test(mridf$tot_VAT_Area_18yr, mridf$tot_ASAT_area_18yr)
+
+mridf$TG_HDL<-mridf$ctg_18y/mridf$chdl_18y #Calculate TG:HDL ratio
+mridf$cldl_18y<-(mridf$cchol_18y-mridf$chdl_18y-(mridf$ctg_18y/5)) #Calculate LDL-c by Friedwahl formula
+
 
 # Check central obesity 
 mridf$central_obesity_18y <- ifelse(mridf$sex == "1", mridf$cwaist_18y >= 90, mridf$cwaist_18y >= 80)
@@ -36,51 +42,41 @@ table(mridf$metS_idf)
 
 mridf$metS_idf <- factor(mridf$metS_idf, levels = c(FALSE, TRUE), labels = c("Absent", "Present"))
 
+
+mridf$gly_st_18y_new<-factor(mridf$gly_st_18y_new)
 mridf <- mridf %>%
-  mutate(group = recode(gly_st_18y_new,
+  mutate(gly_st_18y_new = recode(gly_st_18y_new,
                             "1" = "NGT",
                             "2" = "Prediabetes"
                             ))
 
+# #Dyslipidemia
+# 
+# colnames(mridf)
+# table(mridf$sex)
+# 
+# mridf <- mridf %>%
+#   mutate(
+#     dyslipidemia = case_when(
+#       if_any(c(cchol_18y, cldl_18y, ctg_18y, chdl_18y), is.na) ~ NA_real_,
+#       (cchol_18y >= 200 | cldl_18y >= 130 | ctg_18y >= 150 |
+#          (sex == "1" & chdl_18y < 40) |
+#          (sex == "2" & chdl_18y < 50)) ~ 1,
+#       TRUE ~ 0
+#     )
+#   )
+# 
+# 
+# mridf %>%
+#   group_by(sex) %>%
+#   summarise(
+#     dyslipidemia_n = sum(dyslipidemia, na.rm = TRUE),
+#     total_n = n(),
+#     prevalence = mean(dyslipidemia, na.rm = TRUE) * 100
+#   )
+# 
+# view(mridf %>% select(cchol_18y, cldl_18y, ctg_18y, chdl_18y, dyslipidemia))
 
-### logistic regression
-
-mets1logit<-glm(metS_idf~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = mridf)
-summary(mets1logit)
-
-exp(0.11)
-exp(0.11 - (1.96 * 0.10))
-exp(0.11 + (1.96 * 0.10))
-
-exp(0.12)
-exp(0.12 - (1.96 * 0.10))
-exp(0.12 + (1.96 * 0.10))
-
-pred1logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = mridf)
-summary(pred1logit)
-
-pred2logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = subset(mridf, sex==1))
-summary(pred2logit)
-
-pred3logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = subset(mridf, sex==2))
-summary(pred3logit)
-
-##New approach for metS modelling give the small numbers - Firth penalised logistic regression
-
-install.packages("logistf")   # once
-library(logistf)
-
-mets2logit <- logistf(metS_idf~ZRE_VAT_Combined+ZRE_SAT_combined,  data = mridf)
-summary(mets2logit)
-
-exp(cbind(OR = mets2logit$coef,
-          lower = mets2logit$ci.lower,
-          upper = mets2logit$ci.upper))
-
-#                          OR       lower      upper
-#(Intercept)      0.007244044 0.002207831 0.01732245
-#ZRE_VAT_Combined 1.569336933 0.848217240 2.93204584
-#ZRE_SAT_combined 2.722640827 1.805959050 4.26394447
 
 ##############################################################################################################
 
@@ -88,14 +84,29 @@ exp(cbind(OR = mets2logit$coef,
 # Multiple regression models for ASAT/VAT as exposures ########
 #----------------------------------------------------------------------------------------------------------
 
-dim(mridf)
-colnames(mridf)
+#We have 
 
-cor.test(mridf$ZRE_SAT_combined, mridf$ZRE_VAT_Combined) # Test the correlation between ASAT and VAT
-cor.test(mridf$tot_VAT_Area_18yr, mridf$tot_ASAT_area_18yr)
+#Calculating one-way residualization for Partitioning Variance for ASAT Dominance
 
-mridf$TG_HDL<-mridf$ctg_18y/mridf$chdl_18y #Calculate TG:HDL ratio
-mridf$cldl_18y<-(mridf$cchol_18y-mridf$chdl_18y-(mridf$ctg_18y/5)) #Calculate LDL-c by Friedwahl formula
+# Assuming your data is called 'df'
+mridf <- mridf %>%
+  group_by(sex) %>%
+  mutate(
+    # Step 1: ASAT independent of Age, SES, and VAT (separately by sex)
+    ASATresidpure = if(any(!is.na(sex))) rstandard(lm(tot_ASAT_area_18yr~cage18y+sliscore_18y+tot_VAT_Area_18yr, na.action = na.exclude)) else NA,
+    
+    ASATresid = if(any(!is.na(sex))) rstandard(lm(tot_ASAT_area_18yr~cage18y+sliscore_18y, na.action = na.exclude)) else NA,
+    
+    # Step 2: VAT independent of Age and SES (separately by sex)
+    VATresid = if(any(!is.na(sex))) rstandard(lm(tot_VAT_Area_18yr~cage18y+sliscore_18y, na.action = na.exclude)) else NA,
+    
+    VATresidpure = if(any(!is.na(sex))) rstandard(lm(tot_VAT_Area_18yr~cage18y+sliscore_18y+tot_ASAT_area_18yr, na.action = na.exclude)) else NA,
+    
+    ASAT_VATresid = if(any(!is.na(sex))) rstandard(lm(MRI_subcut_visc_ratio~cage18y+sliscore_18y, na.action = na.exclude)) else NA
+    
+  ) %>%
+  ungroup() # Important to ungroup before running the final model
+
 
 # Define your vector of y-variable names
 y_vars <- c("cgluf_18y","cglu30_18y","cglu2hr_18y","cinsf_18y","cins30_18y","cins2hr_18y", "homa_ir_18", "homa_beta_18",
@@ -109,25 +120,90 @@ mridf <- mridf %>%
     ~ ifelse(. < 0, NA, .)
   ))
 
+
 # Loop over each y-variable to calculate Standardized residuals
+# Define your covariates (now including SES)
+covariates <- "cage18y+sliscore_18y"
+
+# Split data by sex to calculate residuals independently
 
 for (y in y_vars) {
+    mridf[[paste0(y, "_Zresid")]] <- NA
+  }
   
-  y_log <- paste0("log_", y)
+  # na.omit(unique(...)) ensures the loop ignores the NA "category"
+  for (s in na.omit(unique(mridf$sex))) {
   
-  # Create log variable safely
-  mridf[[y_log]] <- ifelse(mridf[[y]] > 0, log(mridf[[y]]), NA)
+  # Create a temporary subset for the current sex
+  subset_idx <- which(mridf$sex == s)
+  temp_data <- mridf[subset_idx, ]
   
-  model1 <- lm(
-    as.formula(paste(y_log, "~ cage18y + sex + cht_18y")),
-    data = mridf,
-    na.action = na.exclude
-  )
+  for (y in y_vars) {
+    y_log <- paste0("log_", y)
+    
+    # 1. Create log variable
+    temp_data[[y_log]] <- ifelse(temp_data[[y]] > 0, log(temp_data[[y]]), NA)
+    
+    # 2. Fit model with SES included (within this sex group)
+    formula_str <- paste(y_log, "~", covariates)
+    model1 <- lm(as.formula(formula_str), data = temp_data, na.action = na.exclude)
+    
+    # 3. Calculate standardized residuals
+    std_residuals <- rstandard(model1)
+    
+    # 4. Map back to the main dataframe
+    # Use names(std_residuals) to ensure rows align correctly
+    mridf[[col_name]][as.numeric(names(std_residuals))] <- std_residuals
+  }
+}
+
+
+
+# 1. Define your variables
+covariates <- c("cage18y", "sliscore_18y")
+
+# 2. Pre-create the result columns with NAs in the main dataframe
+for (y in y_vars) {
+  mridf[[paste0(y, "_Zresid")]] <- NA
+}
+
+# 3. Loop through sexes, excluding NAs
+for (s in na.omit(unique(mridf$sex))) {
   
-  std_residuals <- rstandard(model1)
+  # Identify indices for the current sex
+  subset_idx <- which(mridf$sex == s)
   
-  mridf[[paste0(y, "_Zresidht")]] <- NA
-  mridf[[paste0(y, "_Zresidht")]][as.numeric(names(std_residuals))] <- std_residuals
+  # Create the subset
+  temp_data <- mridf[subset_idx, ]
+  
+  for (y in y_vars) {
+    y_log <- paste0("log_", y)
+    res_name <- paste0(y, "_Zresid") # Define the target column name clearly
+    
+    # Create log variable
+    temp_data[[y_log]] <- ifelse(!is.na(temp_data[[y]]) & temp_data[[y]] > 0, log(temp_data[[y]]), NA)
+    
+    # Check for complete cases within this subset
+    valid_rows <- complete.cases(temp_data[, c(y_log, covariates)])
+    
+    if (sum(valid_rows) > 10) {
+      
+      formula_str <- paste(y_log, "~", paste(covariates, collapse = " + "))
+      
+      # Fit model - na.exclude is crucial here
+      model1 <- lm(as.formula(formula_str), data = temp_data, na.action = na.exclude)
+      
+      # Extract standardized residuals
+      # rstandard() with na.exclude will return a vector the same length as temp_data
+      std_res <- rstandard(model1)
+      
+      # Map these back into the main dataframe using the indices we identified earlier
+      mridf[subset_idx, res_name] <- std_res
+      
+    } else {
+      message(paste("Skipping:", y, "for sex:", s, "- not enough data."))
+    }
+  }
 }
 
 
@@ -136,8 +212,8 @@ outcomes  <- c("cgluf_18y_Zresid", "cglu30_18y_Zresid", "cglu2hr_18y_Zresid","ci
                "cIGI_18y_Zresid","cmat_18y_Zresid","cdyn_DI_18y_Zresid","csyst_18y_Zresid","cdiast_18y_Zresid","cpulse_18y_Zresid",
                "ctg_18y_Zresid","cchol_18y_Zresid","chdl_18y_Zresid","cldl_18y_Zresid","TG_HDL_Zresid",
                "cleptin_18y_Zresid","totaladip_18y_Zresid","hmwadip_18y_Zresid","cwbc_18y_Zresid","ccrp_18y_Zresid")
-exposures <- c("ZRE_SAT_combined", "ZRE_VAT_Combined")
-covars    <- c("age", "sex")   # optional; can be NULL
+exposures <- c("ASATresid", "VATresid")
+#covars    <- c("age", "sex")   # optional; can be NULL
 
 #Residuals adjusted for height
 outcomes1  <- c("cgluf_18y_Zresidht", "cglu30_18y_Zresidht", "cglu2hr_18y_Zresidht","cinsf_18y_Zresidht","cins30_18y_Zresidht","cins2hr_18y_Zresidht",
@@ -267,10 +343,10 @@ mridf_male   <- subset(mridf, sex == 1)
 mridf_female <- subset(mridf, sex == 2)
 
 
-sex_groups <- list(
-  Male   = mridf %>% dplyr::filter(sex == 1),
-  Female = mridf %>% dplyr::filter(sex == 2)
-)
+# sex_groups <- list(
+#   Male   = mridf %>% dplyr::filter(sex == 1),
+#   Female = mridf %>% dplyr::filter(sex == 2)
+# )
 
 results_all <- list()
 
@@ -284,9 +360,9 @@ for (sx in c(1,2)) {
     res <- run_two_exposure_lm_sex(
       data = dsub,
       outcome = out,
-      exp1 = "ZRE_SAT_combined",
-      exp2 = "ZRE_VAT_Combined",
-      covars = "ZRE_57",
+      exp1 = "ASATresidpure",
+      exp2 = NULL,
+      covars = NULL,
       sex_label = sx
     )
     
@@ -300,13 +376,126 @@ results_sex_strat <- do.call(rbind, results_all)
 
 write.csv(
   results_sex_strat,
-  "MRI_MLRA_sex_stratified_wcadj.csv",
+  "MRI_MLRA_sex_stratified_ASATpure_15May26.csv",
   row.names = FALSE
 )
+
+## The above MLRA is adjusted for age and ses and performed separately for sexes
 
 ####### Add BMI and WC as covariates at each time ##########
 
 #Modified the above codes to adjust new covariates, one at a time
+
+
+############ Conditional variable framework - Residualised univariate models #########
+
+
+
+results1 <- lapply(na.omit(unique(mridf$sex)), function(sx){
+  
+  df <- subset(mridf, sex == sx)
+  
+  res <- lapply(outcomes, function(y){
+    
+    fit_asat <- lm(as.formula(paste(y, "~ ASATresidpure")), data = df)
+    fit_vat  <- lm(as.formula(paste(y, "~ VATresidpure")), data = df)
+    fit_ratio <- lm(as.formula(paste(y, "~ ASAT_VATresid")), data = df)
+    
+    data.frame(
+      sex = sx,
+      outcome = y,
+      
+      beta_ASAT = coef(summary(fit_asat))[2,1],
+      se_ASAT= coef(summary(fit_asat))[2,2],
+      p_ASAT    = coef(summary(fit_asat))[2,4],
+      
+      beta_VAT  = coef(summary(fit_vat))[2,1],
+      se_VAT= coef(summary(fit_vat))[2,2],
+      p_VAT     = coef(summary(fit_vat))[2,4],
+      
+      beta_ratio = coef(summary(fit_ratio))[2,1],
+      se_ratio= coef(summary(fit_ratio))[2,2],
+      p_ratio    = coef(summary(fit_ratio))[2,4]
+    )
+  })
+  
+  do.call(rbind, res)
+  
+})
+
+results_univariate <- do.call(rbind, results1)
+
+write.csv(
+  results_univariate,
+  "MRI_uni_sex_stratified_16May26.csv",
+  row.names = FALSE
+)
+
+
+### logistic regression
+
+mets1logit<-glm(metS_idf~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = mridf)
+summary(mets1logit)
+
+exp(0.11)
+exp(0.11 - (1.96 * 0.10))
+exp(0.11 + (1.96 * 0.10))
+
+exp(0.12)
+exp(0.12 - (1.96 * 0.10))
+exp(0.12 + (1.96 * 0.10))
+
+pred1logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = mridf)
+summary(pred1logit)
+exp(coef(pred1logit))
+exp(confint(pred1logit))
+
+pred2logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = subset(mridf, sex==1))
+summary(pred2logit)
+
+# #Call:
+# #glm(formula = gly_st_18y_new ~ ZRE_VAT_Combined + ZRE_SAT_combined, 
+#     family = "binomial", data = subset(mridf, sex == 1))
+# 
+# Coefficients:
+#   Estimate Std. Error z value Pr(>|z|)    
+# (Intercept)       -0.4143     0.1178  -3.517 0.000436 ***
+#   ZRE_VAT_Combined   0.2284     0.1351   1.691 0.090859 .  
+# ZRE_SAT_combined   0.1763     0.1340   1.315 0.188355    
+
+exp(coef(pred2logit))
+exp(confint(pred2logit))
+
+
+pred3logit<-glm(gly_st_18y_new~ZRE_VAT_Combined+ZRE_SAT_combined, family = "binomial", data = subset(mridf, sex==2))
+summary(pred3logit)
+
+exp(coef(pred3logit))
+exp(confint(pred3logit))
+
+
+exp(cbind(OR = pred2logit$coef,
+          lower = pred2logit$ci.lower,
+          upper = pred2logit$ci.upper))
+
+
+##New approach for metS modelling give the small numbers - Firth penalised logistic regression
+
+install.packages("logistf")   # once
+library(logistf)
+
+mets2logit <- logistf(metS_idf~ZRE_VAT_Combined+ZRE_SAT_combined,  data = mridf)
+summary(mets2logit)
+
+exp(cbind(OR = mets2logit$coef,
+          lower = mets2logit$ci.lower,
+          upper = mets2logit$ci.upper))
+
+#                          OR       lower      upper   p
+#(Intercept)      0.007244044 0.002207831 0.01732245  
+#ZRE_VAT_Combined 1.569336933 0.848217240 2.93204584 0.149
+#ZRE_SAT_combined 2.722640827 1.805959050 4.26394447 <0.001
+
 
 ####################create overlaying density plots#################
 
