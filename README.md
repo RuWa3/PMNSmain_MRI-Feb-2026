@@ -11,6 +11,7 @@ All_study_comparison_plot includes comparison of studies in published papers as 
 ## Structure
 - `R_script_MRI_25Feb26/` – R scripts for main analysis performed in the manuscript
 - `All_study_comparison_plot/` – comparison of studies in published papers as mentioned in the manuscript
+- `MRI_24Yanalysis/` – R scripts for main analysis performed for '24-year' follow-up in the manuscript
 
 
 ## Reproducibility
